@@ -1,19 +1,23 @@
-/// A ring queue is composed of two lockless ring buffers and a data
-/// vector: dq stores indices of messages pending receive which are
-/// available at the corresponding cells from the data vector, fq
-/// stores indices of free cells into the data vector. fq + dq covers
-/// the whole index space, which is (1 << ORDER) long.
-///
-/// In practice, an index is pulled from fq, the data vector is filled
-/// with a message at this index next, which is eventually pushed to
-/// dq. The receiver pulls the next available index from dq, extracts
-/// the message at the corresponding position in the vector then
-/// releases the consumed index to fq.
-///
-/// The lighweight ring buffers are based on Ruslan Nikolaev's
-/// Scalable Circular Queue (single-width CAS variant) ported to Rust:
-/// http://drops.dagstuhl.de/opus/volltexte/2019/11335/pdf/LIPIcs-DISC-2019-28.pdf
-/// https://github.com/rusnikola/lfqueue.git
+//! Lockless, bounded FIFO queue.
+//!
+//! A ring queue is composed of two lockless ring buffers and a data
+//! vector: dq stores indices of messages pending receive which are
+//! available at the corresponding cells from the data vector, fq
+//! stores indices of free cells into the data vector. fq + dq covers
+//! the whole index space, which is (1 << ORDER) long. The
+//! implementation performs no dynamic memory allocation.
+//!
+//! In practice, an index is pulled from fq, the data vector is filled
+//! with a message at this index next, which is eventually pushed to
+//! dq. The receiver pulls the next available index from dq, extracts
+//! the message at the corresponding position in the vector then
+//! releases the consumed index to fq.
+//!
+//! The lighweight ring buffers are based on Ruslan Nikolaev's
+//! Scalable Circular Queue ([single-width CAS
+//! variant](https://github.com/rusnikola/lfqueue.git)) ported to
+//! Rust. See
+//! <http://drops.dagstuhl.de/opus/volltexte/2019/11335/pdf/LIPIcs-DISC-2019-28.pdf>.
 
 use std::sync::{
     Arc,
@@ -76,7 +80,7 @@ pub struct Ring<const ORDER: usize> {
 }
 
 impl<const ORDER: usize> Ring<ORDER> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let nr_cells = Ring::<ORDER>::get_nr_cells();
         let mut this = Self {
             // To maintain every single ring entry, we need two cells.
@@ -89,7 +93,7 @@ impl<const ORDER: usize> Ring<ORDER> {
         this.cells.resize_with(nr_cells, || { RING_EMPTY_CELL });
         this
     }
-    fn fill(&mut self) {
+    pub fn fill(&mut self) {
         let half: usize = Ring::<ORDER>::get_nr_entries();
         let full: usize = Ring::<ORDER>::get_nr_cells();
         for n in 0..half {
@@ -106,7 +110,7 @@ impl<const ORDER: usize> Ring<ORDER> {
         self.tail.d.store(half, Relaxed);
         self.threshold.d.store(Ring::<ORDER>::get_threshold(half, full), Relaxed);
     }
-    fn enqueue(&self, eidx: usize) {
+    pub fn enqueue(&self, eidx: usize) {
         let mut eidx = eidx;
         let half: usize = Ring::<ORDER>::get_nr_entries();
         let full: usize = Ring::<ORDER>::get_nr_cells();
@@ -137,7 +141,7 @@ impl<const ORDER: usize> Ring<ORDER> {
             break;
         }
     }
-    fn dequeue(&self) -> Option<usize> {
+    pub fn dequeue(&self) -> Option<usize> {
         if self.threshold.d.load(Relaxed) < 0 {
             return None;
         }
@@ -188,7 +192,7 @@ impl<const ORDER: usize> Ring<ORDER> {
             }
         }
     }
-    const fn get_nr_entries() -> usize {
+    pub const fn get_nr_entries() -> usize {
         1usize << ORDER
     }
     const fn get_nr_cells() -> usize {
@@ -267,7 +271,7 @@ impl<T : Default, const ORDER: usize> RingQueue<T, ORDER> {
             fence(Release);
             unsafe { (*self.data.get())[eidx] = msg; }
             // We have as many free slots than we have data cells, so
-            // enqueing cannot fail by construction.
+            // enqueuing cannot fail by construction.
             self.dq.enqueue(eidx);
             Some(())
         } else {

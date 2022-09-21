@@ -267,7 +267,7 @@ impl Thread {
 	};
 
 	// evl_attach_thread() returns a valid file descriptor or -errno.
-    if ret != 0 {
+    if ret < 0 {
         return Err(Error::from_raw_os_error(-ret));
     }
 

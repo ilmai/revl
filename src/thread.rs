@@ -11,7 +11,6 @@ use std::ptr;
 use std::os::raw::c_int;
 use std::io::Error;
 use std::ffi::CString;
-use evl_sys::SchedPolicy;
 use evl_sys::{
     evl_attach_thread,
     evl_unblock_thread,

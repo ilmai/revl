@@ -11,6 +11,7 @@ use std::ptr;
 use std::os::raw::c_int;
 use std::io::Error;
 use std::ffi::CString;
+use evl_sys::SchedPolicy;
 use evl_sys::{
     evl_attach_thread,
     evl_unblock_thread,
@@ -29,6 +30,7 @@ pub struct Builder {
     visible: bool,
     observable: bool,
     unicast: bool,
+    sched: sched::SchedAttrs,
 }
 
 impl Builder {
@@ -53,6 +55,7 @@ impl Builder {
             visible: false,
             observable: false,
             unicast: false,
+            sched: sched::get_zero_attrs(),
         }
     }
     /// Set the thread name. This name must conform to the [naming
@@ -104,6 +107,11 @@ impl Builder {
     /// notification of events to a single observer.
     pub fn unicast(mut self) -> Self {
         self.unicast = true;
+        self
+    }
+    // Set scheduling policy for the thread
+    pub fn sched(mut self, policy: impl sched::PolicyParam) -> Self {
+        self.sched = policy.to_attr();
         self
     }
     /// Attach the calling thread to the EVL core, consuming the
@@ -257,11 +265,24 @@ impl Thread {
 	        evl_attach_thread(c_flags, ptr::null())
             }
 	};
+
 	// evl_attach_thread() returns a valid file descriptor or -errno.
-	match ret {
-	    0.. => return Ok(Thread(ret)),
-            _ => return Err(Error::from_raw_os_error(-ret)),
+	let result = match ret {
+	    0.. => Ok(Thread(ret)),
+            _ => Err(Error::from_raw_os_error(-ret)),
 	};
+
+        if builder.sched.0.sched_policy as i32 != 0 {
+            if let Ok(thread) = &result {
+                let c_attrs_ptr: *const evl_sched_attrs = &builder.sched.0;
+                let ret: c_int = unsafe { evl_set_schedattr(thread.0, c_attrs_ptr) };
+                if ret != 0 {
+                    return Err(Error::from_raw_os_error(-ret));
+                }
+            }    
+        }
+
+        result
     }
     /// Unblock the target thread.
     ///

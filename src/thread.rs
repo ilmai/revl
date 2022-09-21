@@ -267,22 +267,21 @@ impl Thread {
 	};
 
 	// evl_attach_thread() returns a valid file descriptor or -errno.
-	let result = match ret {
-	    0.. => Ok(Thread(ret)),
-            _ => Err(Error::from_raw_os_error(-ret)),
-	};
+    if ret != 0 {
+        return Err(Error::from_raw_os_error(-ret));
+    }
 
-        if builder.sched.0.sched_policy as i32 != 0 {
-            if let Ok(thread) = &result {
-                let c_attrs_ptr: *const evl_sched_attrs = &builder.sched.0;
-                let ret: c_int = unsafe { evl_set_schedattr(thread.0, c_attrs_ptr) };
-                if ret != 0 {
-                    return Err(Error::from_raw_os_error(-ret));
-                }
-            }    
+    let thread = Thread(ret);
+
+    if builder.sched.0.sched_policy as i32 != 0 {
+        let c_attrs_ptr: *const evl_sched_attrs = &builder.sched.0;
+        let ret: c_int = unsafe { evl_set_schedattr(thread.0, c_attrs_ptr) };
+        if ret != 0 {
+            return Err(Error::from_raw_os_error(-ret));
         }
+    }
 
-        result
+    Ok(thread)
     }
     /// Unblock the target thread.
     ///
